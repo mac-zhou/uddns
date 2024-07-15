@@ -20,10 +20,9 @@ type Config struct {
 }
 
 type Cloudflare struct {
-	config    *Config
-	client    *cloudflare.API
-	recordIDs map[string]string
-	zoneID    string
+	config *Config
+	client *cloudflare.API
+	zoneID string
 }
 
 func init() {
@@ -55,9 +54,8 @@ func New(config *Config) (*Cloudflare, error) {
 	}
 
 	return &Cloudflare{
-		config:    config,
-		client:    api,
-		recordIDs: make(map[string]string),
+		config: config,
+		client: api,
 	}, nil
 }
 
@@ -112,24 +110,6 @@ func (c *Cloudflare) Update(ips *provider.IpResult) error {
 
 func (c *Cloudflare) updateDNSRecord(ctx context.Context, recordType, ip string) error {
 	domain := c.config.Domain
-
-	if recordID, ok := c.recordIDs[recordType]; ok {
-		updateParams := cloudflare.UpdateDNSRecordParams{
-			ID:      recordID,
-			Type:    recordType,
-			Name:    domain,
-			Content: ip,
-		}
-		_, err := c.client.UpdateDNSRecord(ctx, cloudflare.ZoneIdentifier(c.zoneID), updateParams)
-		if err != nil {
-			slog.Error("[CloudFlare] failed to update DNS record:", "error", err, "type", recordType)
-			delete(c.recordIDs, recordType)
-			return err
-		}
-		slog.Info("[CloudFlare] DNS record updated successfully", "type", recordType, "ip", ip)
-		return nil
-	}
-
 	params := cloudflare.ListDNSRecordsParams{Type: recordType, Name: domain}
 	dnsRecords, _, err := c.client.ListDNSRecords(ctx, cloudflare.ZoneIdentifier(c.zoneID), params)
 	if err != nil {
@@ -140,7 +120,6 @@ func (c *Cloudflare) updateDNSRecord(ctx context.Context, recordType, ip string)
 
 	if len(dnsRecords) > 0 {
 		record := dnsRecords[0]
-		c.recordIDs[recordType] = record.ID
 		updateParams := cloudflare.UpdateDNSRecordParams{
 			ID:      record.ID,
 			Type:    recordType,
@@ -153,7 +132,6 @@ func (c *Cloudflare) updateDNSRecord(ctx context.Context, recordType, ip string)
 		_, err := c.client.UpdateDNSRecord(ctx, cloudflare.ZoneIdentifier(c.zoneID), updateParams)
 		if err != nil {
 			slog.Error("[CloudFlare] failed to update DNS record:", "error", err, "type", recordType)
-			delete(c.recordIDs, recordType)
 			return err
 		}
 		slog.Info("[CloudFlare] DNS record updated successfully", "type", recordType, "ip", ip)
@@ -166,12 +144,11 @@ func (c *Cloudflare) updateDNSRecord(ctx context.Context, recordType, ip string)
 			Proxied: cloudflare.BoolPtr(false),
 		}
 
-		record, err := c.client.CreateDNSRecord(ctx, cloudflare.ZoneIdentifier(c.zoneID), createParams)
+		_, err := c.client.CreateDNSRecord(ctx, cloudflare.ZoneIdentifier(c.zoneID), createParams)
 		if err != nil {
 			slog.Error("[CloudFlare] failed to create DNS record:", "error", err, "type", recordType)
 			return err
 		}
-		c.recordIDs[recordType] = record.ID
 		slog.Info("[CloudFlare] DNS record created successfully", "type", recordType, "ip", ip)
 	}
 
